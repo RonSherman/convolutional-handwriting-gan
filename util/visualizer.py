@@ -5,7 +5,8 @@ import ntpath
 import time
 from . import util, html
 from subprocess import Popen, PIPE
-from scipy.misc import imresize
+#from scipy.misc import imresize
+import cv2
 
 if sys.version_info[0] == 2:
     VisdomExceptionBase = Exception
@@ -38,9 +39,9 @@ def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256):
         save_path = os.path.join(image_dir, image_name)
         h, w, _ = im.shape
         if aspect_ratio > 1.0:
-            im = imresize(im, (h, int(w * aspect_ratio)), interp='bicubic')
+            im = cv2.resize(src=im, dsize=(h, int(w * aspect_ratio)), interpolation=cv2.INTER_CUBIC)
         if aspect_ratio < 1.0:
-            im = imresize(im, (int(h / aspect_ratio), w), interp='bicubic')
+            im = cv2.resize(src=im, dsize=(int(h / aspect_ratio), w), interpolation=cv2.INTER_CUBIC)
         util.save_image(im, save_path)
 
         ims.append(image_name)
@@ -96,7 +97,8 @@ class Visualizer():
 
     def create_visdom_connections(self):
         """If the program could not connect to Visdom server, this function will start a new server at port < self.port > """
-        cmd = sys.executable + ' -m visdom.server -p %d &>/dev/null &' % self.port
+        #cmd = sys.executable + ' -m visdom.server -p %d &>/dev/null &' % self.port
+        cmd = sys.executable + ' -m visdom.server -p %d ' % self.port
         print('\n\nCould not connect to Visdom server. \n Trying to start a server....')
         print('Command: %s' % cmd)
         Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)

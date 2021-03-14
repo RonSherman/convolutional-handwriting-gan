@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 import torch
+from torch.cuda.amp import autocast, GradScaler
+
 from .base_model import BaseModel
 from .BigGAN_networks import *
 from util.util import toggle_grad, loss_hinge_dis, loss_hinge_gen, ortho, default_ortho, toggle_grad, prepare_z_y, \
@@ -13,7 +15,7 @@ from torch.nn.utils import clip_grad_norm_
 import random
 import unicodedata
 import sys
-
+from functools import partial
 activation_dict = {'inplace_relu': nn.ReLU(inplace=True),
                    'relu': nn.ReLU(inplace=False),
                    'ir': nn.ReLU(inplace=True),}
@@ -54,7 +56,8 @@ class ScrabbleGANBaseModel(BaseModel):
         opt.n_classes = len(opt.alphabet)
         self.netG = Generator(**vars(opt))
         self.Gradloss = torch.nn.L1Loss()
-
+        # OUR mixed-precision
+        self.autocast_bit = opt.autocast_bit
         self.netconverter = strLabelConverter(opt.alphabet)
         self.netOCR = CRNN(opt).to(self.device)
         if len(opt.gpu_ids) > 0:
@@ -68,7 +71,8 @@ class ScrabbleGANBaseModel(BaseModel):
 
         self.OCR_criterion = CTCLoss(zero_infinity=True, reduction='none')
         print(self.netG)
-
+        #OUR
+        self.scaler=opt.scaler
 
         if self.isTrain:  # only defined during training time
             # define your loss functions. You can use losses provided by torch.nn such as torch.nn.L1Loss.
@@ -337,6 +341,7 @@ class ScrabbleGANBaseModel(BaseModel):
 
 
     def backward_G(self):
+
         self.loss_G = loss_hinge_gen(self.netD(**{'x': self.fake, 'z': self.z}), self.len_text_fake.detach(), self.opt.mask_loss)
         # OCR loss on real data
 
@@ -346,12 +351,18 @@ class ScrabbleGANBaseModel(BaseModel):
         self.loss_OCR_fake = torch.mean(loss_OCR_fake[~torch.isnan(loss_OCR_fake)])
         # total loss
         self.loss_T = self.loss_G + self.opt.gb_alpha*self.loss_OCR_fake
+
+
         grad_fake_OCR = torch.autograd.grad(self.loss_OCR_fake, self.fake, retain_graph=True)[0]
         self.loss_grad_fake_OCR = 10**6*torch.mean(grad_fake_OCR**2)
         grad_fake_adv = torch.autograd.grad(self.loss_G, self.fake, retain_graph=True)[0]
         self.loss_grad_fake_adv = 10**6*torch.mean(grad_fake_adv**2)
+        #default not false==true
         if not self.opt.no_grad_balance:
+            #until here autocast?
+
             self.loss_T.backward(retain_graph=True)
+            #do unscale
             grad_fake_OCR = torch.autograd.grad(self.loss_OCR_fake, self.fake, create_graph=True, retain_graph=True)[0]
             grad_fake_adv = torch.autograd.grad(self.loss_G, self.fake, create_graph=True, retain_graph=True)[0]
             a = self.opt.gb_alpha * torch.div(torch.std(grad_fake_adv), self.epsilon+torch.std(grad_fake_OCR))
@@ -404,9 +415,15 @@ class ScrabbleGANBaseModel(BaseModel):
         self.backward_D()
 
     def optimize_D_OCR_step(self):
-        self.optimizer_D.step()
+        if self.opt.autocast_bit:
+            self.scaler.step(self.optimizer_D)
+        else:
+            self.optimizer_D.step()
         if self.opt.OCR_init in ['glorot', 'xavier', 'ortho', 'N02']:
-            self.optimizer_OCR.step()
+            if self.opt.autocast_bit:
+                self.scaler.step(self.optimizer_OCR)
+            else:
+                self.optimizer_OCR.step()
         self.optimizer_D.zero_grad()
         self.optimizer_OCR.zero_grad()
 
@@ -418,17 +435,29 @@ class ScrabbleGANBaseModel(BaseModel):
         self.optimizer_D.zero_grad()
 
     def optimize_G(self):
-        self.forward()
-        self.set_requires_grad([self.netD], False)
-        self.set_requires_grad([self.netOCR], False)
-        self.backward_G()
+        if self.autocast_bit:
+            with autocast():
+                self.forward()
+                self.set_requires_grad([self.netD], False)
+                self.set_requires_grad([self.netOCR], False)
+                self.backward_G()
+        else:
+            self.forward()
+            self.set_requires_grad([self.netD], False)
+            self.set_requires_grad([self.netOCR], False)
+            self.backward_G()
 
     def optimize_G_step(self):
+        #check for mixed precision
+        if self.opt.autocast_bit:
+            f_opt=partial(self.scaler.step,self.optimizer_G)
+        else:
+            f_opt=self.optimizer_G.step
         if self.opt.single_writer and self.opt.optimize_z:
             self.optimizer_z.step()
             self.optimizer_z.zero_grad()
         if not self.opt.not_optimize_G:
-            self.optimizer_G.step()
+            f_opt()
             self.optimizer_G.zero_grad()
 
     def optimize_ocr(self):

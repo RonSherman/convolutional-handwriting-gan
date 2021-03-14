@@ -211,7 +211,7 @@ def createDataset(image_path_list, label_list, outputPath, mode, author_id, remo
         os.makedirs(outputPath)
     else:
         os.makedirs(outputPath)
-    env = lmdb.open(outputPath, map_size=1099511627776)
+    env = lmdb.open(outputPath, map_size=1073741824)
     cache = {}
     cnt = 1
 
@@ -304,7 +304,7 @@ def printAlphabet(label_list):
 if __name__ == '__main__':
     create_Dict = True # create a dictionary of the generated dataset
     dataset = 'IAM'     #CVL/IAM/RIMES/gw
-    mode = 'tr'        # tr/te/val/va1/va2/all
+    mode = 'all'        # tr/te/val/va1/va2/all
     labeled = True
     top_dir = 'Datasets'
     # parameter relevant for IAM/RIMES:

@@ -256,7 +256,11 @@ class BaseOptions():
             '--num_standing_accumulations', type=int, default=16,
             help='Number of forward passes to use in accumulating standing stats? '
                  '(default: %(default)s)')
-
+        ### OUR ADDITION ###
+        parser.add_argument(
+            '--autocast_bit', action='store_true', default=False,
+            help='Train with autocasting to fp16 or fp32 where needed?'
+                 '(default: %(default)s)')
         ### Numerical precision and SV stuff ###
         parser.add_argument(
             '--adam_eps', type=float, default=1e-8,

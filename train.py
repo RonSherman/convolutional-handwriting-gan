@@ -24,6 +24,8 @@ from util.util import seed_rng
 from util.util import prepare_z_y, get_curr_data
 import torch
 import os
+from torch import optim
+from torch.cuda.amp import GradScaler, autocast
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()   # get training options
@@ -33,7 +35,9 @@ if __name__ == '__main__':
     dataset = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
     dataset_size = len(dataset)    # get the number of images in the dataset.
     print('The number of training images = %d' % dataset_size)
-
+    # OUR VARIABLE
+    if opt.autocast_bit:
+        opt.scaler = GradScaler()
     model = create_model(opt)      # create a model given opt.model and other options
     model.setup(opt)               # regular setup: load and print networks; create schedulers
     if opt.single_writer:
@@ -69,6 +73,8 @@ if __name__ == '__main__':
                     counter += 1
                 model.optimize_G_step()
                 model.optimize_D_OCR_step()
+                if opt.autocast_bit:
+                    opt.scaler.update()
             else:
                 if (i % opt.num_critic_train) == 0:
                     counter = 0
@@ -85,6 +91,8 @@ if __name__ == '__main__':
                     model.optimize_D_OCR()
                     counter += 1
                 model.optimize_D_OCR_step()
+                if opt.autocast_bit:
+                    opt.scaler.update()
                 # print(model.netG.linear.bias[:10])
                 # print('G',model.loss_G, 'D', model.loss_D, 'Dreal',model.loss_Dreal, 'Dfake', model.loss_Dfake,
                 #       'OCR_real', model.loss_OCR_real, 'OCR_fake', model.loss_OCR_fake, 'grad_fake_OCR', model.loss_grad_fake_OCR, 'grad_fake_adv', model.loss_grad_fake_adv)
@@ -109,7 +117,7 @@ if __name__ == '__main__':
                 model.save_networks(save_suffix)
 
             for i in opt.gpu_ids:
-                with torch.cuda.device('cuda:%f' % (i)):
+                with torch.cuda.device('cuda:%d' % (i)):
                     torch.cuda.empty_cache()
 
             iter_data_time = time.time()
