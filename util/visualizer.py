@@ -76,8 +76,11 @@ class Visualizer():
         if self.display_id > 0:  # connect to a visdom server given <display_port> and <display_server>
             import visdom
             self.ncols = opt.display_ncols
-            self.vis = visdom.Visdom(server=opt.display_server, port=opt.display_port, env=opt.display_env)
-            if not self.vis.check_connection():
+            try:
+                self.vis = visdom.Visdom(server=opt.display_server, port=opt.display_port, env=opt.display_env)
+                if not self.vis.check_connection():
+                    self.create_visdom_connections()
+            except:
                 self.create_visdom_connections()
 
         if self.use_html:  # create an HTML object at <checkpoints_dir>/web/; images will be saved under <checkpoints_dir>/web/images/
@@ -103,7 +106,7 @@ class Visualizer():
         print('Command: %s' % cmd)
         Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
 
-    def display_current_results(self, visuals, epoch, save_result):
+    def display_current_results(self, visuals,labels, epoch, save_result):
         """Display current results on visdom; save current results to an HTML file.
 
         Parameters:
@@ -116,6 +119,17 @@ class Visualizer():
             if ncols > 0:        # show all the images in one visdom panel
                 ncols = min(ncols, len(visuals))
                 h, w = next(iter(visuals.values())).shape[:2]
+                #w*=2
+                #ADDED the text of fake labels
+                #self.vis.text("test!")
+                # fake labels
+                s="fakes: "
+                for l in labels[0]:
+                    s+=l.decode("utf-8")+","
+                s+='\ntrue: '
+                for l in labels[1]:
+                    s+=l.decode("utf-8")+","
+                self.vis.text(s,win=self.display_id + 0x666)
                 table_css = """<style>
                         table {border-collapse: separate; border-spacing: 4px; white-space: nowrap; text-align: center}
                         table td {width: % dpx; height: % dpx; padding: 4px; outline: 4px solid black}
@@ -227,3 +241,24 @@ class Visualizer():
         print(message)  # print the message
         with open(self.log_name, "a") as log_file:
             log_file.write('%s\n' % message)  # save the message
+    #TODO- call this with usage gpu
+    def plot_gpu_usage(self, epoch, counter_ratio, losses):
+        """display the current GPU usages on visdom display: dictionary of type labels and values
+
+        """
+        if not hasattr(self, 'plot_gpu'):
+            self.plot_gpu = {'X': [], 'Y': [], 'legend': list(losses.keys())}
+        self.plot_gpu['X'].append(epoch + counter_ratio)
+        self.plot_gpu['Y'].append([losses[k] for k in self.plot_gpu['legend']])
+        try:
+            self.vis.line(
+                X=np.stack([np.array(self.plot_gpu['X'])] * len(self.plot_gpu['legend']), 1),
+                Y=np.array(self.plot_gpu['Y']),
+                opts={
+                    'title': self.name + ' gpu usage over time',
+                    'legend': self.plot_gpu['legend'],
+                    'xlabel': 'epoch',
+                    'ylabel': 'GB Memory'},
+                win=self.display_id+999)
+        except VisdomExceptionBase:
+            self.create_visdom_connections()

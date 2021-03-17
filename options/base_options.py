@@ -389,6 +389,8 @@ class BaseOptions():
                     output_opt.name += '_NotOptimizeG'
                 if output_opt.onlyOCR:
                     output_opt.name += '_OnlyOCRLoss'
+                if output_opt.autocast_bit:
+                    output_opt.name += '_mixed_precs'
 
         output_opt.len_vocab = len(output_opt.alphabet)
         return output_opt
