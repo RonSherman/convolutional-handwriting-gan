@@ -50,7 +50,7 @@ class BaseOptions():
         parser.add_argument('--imgH', type=int, default=32,
                             help='height of the image')
         parser.add_argument(
-            '--num_workers', type=int, default=8,
+            '--num_workers', type=int, default=0,
             help='Number of dataloader workers; consider using less for HDF5 '
                  '(default: %(default)s)')
         parser.add_argument(
@@ -73,7 +73,7 @@ class BaseOptions():
                             help='if specified, do not flip the images for data augmentation')
         parser.add_argument('--serial_batches', action='store_true',
                             help='if true, takes images in order to make batches, otherwise takes them randomly')
-        parser.add_argument('--num_threads', default=4, type=int, help='# threads for loading data')
+        parser.add_argument('--num_threads', default=0, type=int, help='# threads for loading data')
         parser.add_argument('--alphabet', type=str, default='alphabet', help='alphabet')
         parser.add_argument('--labeled', action='store_false',
                             help='use labels for data')
